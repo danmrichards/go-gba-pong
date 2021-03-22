@@ -1,86 +1,90 @@
 package main
 
 import (
+	"image/color"
 	"unsafe"
 
+	"machine"
+	"runtime/interrupt"
 	"runtime/volatile"
 )
 
 const (
 	screenWidth  = 240
 	screenHeight = 160
-
-	memIO   = 0x04000000 // I/O Registers.
-	memPAL  = 0x05000000 // Colour Palette RAM.
-	memVRAM = 0x06000000 // Video RAM.
-	memOAM  = 0x07000000 // Object Attribute Memory (Sprite hardware).
-
-	// Keys.
-	keyUP   = 0x0040
-	keyDown = 0x0080
-	keyAny  = 0x03FF
-
-	objectAttr0YMask = 0x0FF
-	objectAttr1XMask = 0x1FF
 )
 
 var (
-	// display represents the I/O register for LCD control.
+	// displayCtl represents the I/O register for LCD control.
 	//
 	// Used to set video modes.
-	display = (*volatile.Register16)(unsafe.Pointer(uintptr(memIO)))
+	displayCtl = (*volatile.Register32)(unsafe.Pointer(uintptr(0x04000000)))
 
-	// vcount represents the vertical counter register.
-	//
-	// Holds the index of the current row being drawn to screen. Can be used
-	// to detect when the screen has been totally updated (VBLANK).
-	vcount = (*volatile.Register16)(unsafe.Pointer(uintptr(memIO + 0x0006)))
+	// displayStatus represents the display status and interrupt control.
+	displayStatus = (*volatile.Register32)(unsafe.Pointer(uintptr(0x4000004)))
 
-	// keyPad represents the GBA key pad.
-	keyPad = (*volatile.Register16)(unsafe.Pointer(uintptr(memIO + 0x0130)))
+	screen = machine.Display
 
-	// oam represents the object attribute memory (OAM).
-	//
-	// The OAM is onboard hardware used for rendering sprites.
-	oam = (*objectAttributes)(unsafe.Pointer(uintptr(memOAM)))
-
-	// tileMem represents a set of 16kb blocks of video RAM used to store tiles.
-	tileMem = (*tileBlock)(unsafe.Pointer(uintptr(memVRAM)))
-
-	// objectPaletteMem represents the colour palette memory used for objects.
-	objectPaletteMem = (*rgb15)(unsafe.Pointer(uintptr(memPAL + 0x200)))
-)
-
-type (
-	// rgb15 represents a 15-bit colours GBA colour.
-	//
-	// There are 15 actual bits, but colours are aligned as 16-bit.
-	//
-	// ?BBBBBGGGGGRRRRR - One unused bit, 5 blue, 5 green, 5 red.
-	rgb15 uint16
-
-	// objectAttributes represents the attributes of a sprite in the GBA
-	// Object Access Memory (OAM).
-	objectAttributes struct {
-		attr0 uint16 // Y coordinate, shape and colour mode of the object's tiles (4bpp or 8bpp).
-		attr1 uint16 // X coordinate and size.
-		attr2 uint16 // Base tile index and the colour palette (when in 4bpp mode).
-		pad   uint16
+	white = color.RGBA{
+		R: 255,
+		G: 255,
+		B: 255,
+		A: 255,
 	}
 
-	// tile4BPP represents a 4-bit per pixel tile.
-	//
-	// 8 x 8 at 4-bits per pixel = 8 ints
-	//
-	// Each tile can have 16 colours (i.e. reference 16 colour palette values).
-	tile4BPP [8]uint32
+	black = color.RGBA{}
 
-	// tileBlock represents a 16KB section of vRAM used for tiles.
-	//
-	// 512 4-bit tiles can fit in the block.
-	tileBlock [512]tile4BPP
+	rectX = int16(0)
 )
 
-func main() {
+func update(interrupt.Interrupt) {
+	// Wrap to edge of screen.
+	if rectX > screenWidth*screenHeight/10 {
+		rectX = 0
+	} else if rectX > 0 {
+		// Reset the previous rectangle to black. Gives the illusion of
+		// the rectangle moving.
+		last := rectX - 10
+		drawRectangle(last%screenWidth, (last/screenWidth)*10, 10, 10, black)
+	}
 
+	// Draw a white rectangle.
+	drawRectangle(rectX%screenWidth, (rectX/screenWidth)*10, 10, 10, white)
+
+	rectX += 10
+}
+
+// drawRectangle sets a number of pixels to a given color in order to form a
+// rectangle using the given co-ordinates, width and height.
+func drawRectangle(x, y, w, h int16, c color.RGBA) {
+	for ry := y; ry < y+w; ry++ {
+		for rx := x; rx < x+h; rx++ {
+			screen.SetPixel(rx, ry, c)
+		}
+	}
+}
+
+// clear clears the screen to black.
+func clear() {
+	for x := int16(0); x < screenWidth; x++ {
+		for y := int16(0); y < screenHeight; y++ {
+			screen.SetPixel(x, y, black)
+		}
+	}
+}
+
+func main() {
+	// Enable bitmap mode.
+	screen.Configure()
+
+	// Enable the interrupts for VBLANK and HBLANK.
+	displayStatus.SetBits(1<<3 | 1<<4)
+
+	clear()
+
+	// Update the screen on VBLANK to avoid screen tearing.
+	interrupt.New(machine.IRQ_VBLANK, update).Enable()
+
+	for {
+	}
 }
