@@ -20,14 +20,13 @@ var (
 	}
 
 	black = color.RGBA{}
-
-	paddleY = int16(10)
 )
 
 func main() {
 	// Enable bitmap mode.
 	screen.Configure()
 
+	// Configure the game.
 	game.Screen = screen
 	game.Background = black
 	game.PaddleColour = white

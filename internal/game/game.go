@@ -54,9 +54,7 @@ var (
 
 // Init initialises the game state.
 func Init() {
-	tinydraw.FilledRectangle(
-		Screen, 0, 0, display.Width, display.Height, Background,
-	)
+	display.Clear(Screen, Background)
 }
 
 // Update updates the current game state, intended to be called for each frame.

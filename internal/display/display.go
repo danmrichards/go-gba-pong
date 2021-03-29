@@ -7,6 +7,7 @@ import (
 	"runtime/volatile"
 
 	"tinygo.org/x/drivers"
+	"tinygo.org/x/tinydraw"
 )
 
 const (
@@ -17,29 +18,15 @@ const (
 	Height = 160
 )
 
-var (
-	// displayCtl represents the I/O register for LCD control.
-	//
-	// Used to set video modes.
-	displayCtl = (*volatile.Register32)(unsafe.Pointer(uintptr(0x04000000)))
-
-	// displayStatus represents the display status and interrupt control.
-	displayStatus = (*volatile.Register32)(unsafe.Pointer(uintptr(0x4000004)))
-
-	// vcount represents the vertical counter register.
-	//
-	// Holds the index of the current row being drawn to screen. Can be used
-	// to detect when the screen has been totally updated (VBLANK).
-	vcount = (*volatile.Register16)(unsafe.Pointer(uintptr(0x04000006)))
-)
+// vcount represents the vertical counter register.
+//
+// Holds the index of the current row being drawn to screen. Can be used
+// to detect when the screen has been totally updated (VBLANK).
+var vcount = (*volatile.Register16)(unsafe.Pointer(uintptr(0x04000006)))
 
 // Clear clears the screen to the given colour.
 func Clear(d drivers.Displayer, c color.RGBA) {
-	for x := int16(0); x < Width; x++ {
-		for y := int16(0); y < Height; y++ {
-			d.SetPixel(x, y, c)
-		}
-	}
+	tinydraw.FilledRectangle(d, 0, 0, Width, Height, c)
 }
 
 // VSync is a poor mans vertical sync. It blocks until a vertical blank (VBLANK)
