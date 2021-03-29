@@ -9,62 +9,154 @@ import (
 	"tinygo.org/x/tinydraw"
 )
 
-const (
-	paddleWidth  = 10
-	paddleHeight = 50
+var (
+	// Using a load of package level variables here because the compiler and
+	// resulting ROM acts weirdly if using structs and receiver methods (e.g.
+	// incorrect colours). Possibly something to do with alignment and memory
+	// mapping.
+
+	// Screen is the display where the game will draw pixels.
+	Screen drivers.Displayer
+
+	// Background is the background colour of the game.
+	Background color.RGBA
+
+	// PaddleWidth is the width of the player paddle.
+	PaddleWidth = int16(10)
+
+	// PaddleHeight is the height of the player paddle.
+	PaddleHeight = int16(50)
+
+	// PaddleColour is the colour of the player paddle.
+	PaddleColour color.RGBA
+
+	// BallWidth is the width of the ball.
+	BallWidth = int16(8)
+
+	// BallHeight is the height of the ball.
+	BallHeight = int16(8)
+
+	// BallColour is the colour of the ball.
+	BallColour color.RGBA
+
+	// paddle positional variables.
+	paddleX = int16(10)
+	paddleY = int16(10)
+
+	// ball positional variables.
+	ballX         = (display.Width / 2) - (BallWidth / 2)
+	ballY         = (display.Height / 2) - (BallHeight / 2)
+	ballXVelocity = int16(-2)
+	ballYVelocity = int16(-1)
+	ballMaxX      = display.Width - BallWidth
+	ballMaxY      = display.Height - BallHeight
 )
 
-// Pong represents the game state.
-type Pong struct {
-	screen drivers.Displayer
-	bg     color.RGBA
-
-	paddleY      int16
-	paddleColour color.RGBA
-}
-
-// NewPong returns an instantiated game state configured to draw to the given
-// display in the given colours.
-func NewPong(screen drivers.Displayer, bg, paddleColour color.RGBA) *Pong {
-	return &Pong{
-		screen:       screen,
-		bg:           bg,
-		paddleY:      10,
-		paddleColour: paddleColour,
-	}
+// Init initialises the game state.
+func Init() {
+	tinydraw.FilledRectangle(
+		Screen, 0, 0, display.Width, display.Height, Background,
+	)
 }
 
 // Update updates the current game state, intended to be called for each frame.
-func (p *Pong) Update() {
+func Update() {
+	clearPrevFrame()
+
+	handleInput()
+
+	updatePaddle()
+
+	updateBall()
+}
+
+// clearPrevFrame clears the previous frame drawn pixels.
+func clearPrevFrame() {
 	// Clear previous paddle position.
 	tinydraw.FilledRectangle(
-		p.screen,
-		10,
-		p.paddleY,
-		paddleWidth,
-		paddleHeight,
-		p.bg,
+		Screen,
+		paddleX,
+		paddleY,
+		PaddleWidth,
+		PaddleHeight,
+		Background,
 	)
 
+	// Clear previous ball position.
+	tinydraw.FilledRectangle(
+		Screen,
+		ballX,
+		ballY,
+		BallWidth,
+		BallHeight,
+		Background,
+	)
+}
+
+// handleInput handles input from the keypad, updating game state accordingly.
+func handleInput() {
 	// Update paddle position.
 	switch {
 	case input.KeyPressed(input.KeyUp):
-		p.paddleY -= 5
+		paddleY -= 5
 	case input.KeyPressed(input.KeyDown):
-		p.paddleY += 5
+		paddleY += 5
 	}
+}
 
-	p.paddleY = clamp(p.paddleY, 10, display.Height-paddleHeight-10)
+// updatePaddle updates the position of the paddle.
+func updatePaddle() {
+	// Stop the paddle from going off screen.
+	paddleY = clamp(paddleY, 10, display.Height-PaddleHeight-10)
 
-	// Draw new paddle.
+	// Draw paddle.
 	tinydraw.FilledRectangle(
-		p.screen,
+		Screen,
 		10,
-		p.paddleY,
-		paddleWidth,
-		paddleHeight,
-		p.paddleColour,
+		paddleY,
+		PaddleWidth,
+		PaddleHeight,
+		PaddleColour,
 	)
+}
+
+// updateBall updates the position of the ball.
+func updateBall() {
+	collideEdge()
+	collidePaddle()
+
+	ballX = clamp(ballX+ballXVelocity, 0, ballMaxX)
+	ballY = clamp(ballY+ballYVelocity, 0, ballMaxY)
+
+	// Draw ball.
+	tinydraw.FilledRectangle(
+		Screen,
+		ballX,
+		ballY,
+		BallWidth,
+		BallHeight,
+		BallColour,
+	)
+}
+
+// collideEdge detects if the ball has collided with the edge of the screen
+// and updates the direction accordingly.
+func collideEdge() {
+	if ballY == 0 || ballY == ballMaxY {
+		ballYVelocity = -ballYVelocity
+	} else if ballX == 0 || ballX == ballMaxX {
+		ballXVelocity = -ballXVelocity
+	}
+}
+
+// collidePaddle detects if the ball has collided with the paddle and updates
+// the direction accordingly.
+func collidePaddle() {
+	if (ballX >= paddleX && ballX <= paddleX+PaddleWidth) &&
+		(ballY >= paddleY && ballY <= paddleY+PaddleHeight) {
+		ballX = paddleX + PaddleWidth
+		ballXVelocity = -ballXVelocity
+	}
 }
 
 // clamp returns n normalised to the range min <= n <= max.

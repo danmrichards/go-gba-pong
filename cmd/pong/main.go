@@ -28,14 +28,16 @@ func main() {
 	// Enable bitmap mode.
 	screen.Configure()
 
-	display.Clear(screen, black)
+	game.Screen = screen
+	game.Background = black
+	game.PaddleColour = white
+	game.BallColour = white
 
-	p := game.NewPong(screen, black, white)
+	game.Init()
 
 	for {
 		display.VSync()
 
-		// Update the game state.
-		p.Update()
+		game.Update()
 	}
 }
