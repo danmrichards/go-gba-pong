@@ -4,6 +4,7 @@ import (
 	"image/color"
 
 	"machine"
+	"runtime/interrupt"
 
 	"github.com/danmrichards/gba-pong/internal/display"
 	"github.com/danmrichards/gba-pong/internal/game"
@@ -26,6 +27,8 @@ func main() {
 	// Enable bitmap mode.
 	screen.Configure()
 
+	display.VSync()
+
 	// Configure the game.
 	game.Screen = screen
 	game.Background = black
@@ -34,9 +37,11 @@ func main() {
 
 	game.Init()
 
-	for {
-		display.VSync()
+	// Register an interrupt to only update the game state when the screen is
+	// done drawing.
+	interrupt.New(machine.IRQ_VBLANK, game.Update).Enable()
 
-		game.Update()
+	// Infinite loop is required to prevent the ROM from exiting.
+	for {
 	}
 }

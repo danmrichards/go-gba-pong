@@ -3,6 +3,8 @@ package game
 import (
 	"image/color"
 
+	"runtime/interrupt"
+
 	"github.com/danmrichards/gba-pong/internal/display"
 	"github.com/danmrichards/gba-pong/internal/input"
 	"tinygo.org/x/drivers"
@@ -39,33 +41,76 @@ var (
 	// BallColour is the colour of the ball.
 	BallColour color.RGBA
 
-	// paddle positional variables.
+	// Paddle positional variables.
 	paddleX = int16(10)
 	paddleY = int16(10)
 
-	// ball positional variables.
-	ballX         = (display.Width / 2) - (BallWidth / 2)
-	ballY         = (display.Height / 2) - (BallHeight / 2)
-	ballXVelocity = int16(-2)
-	ballYVelocity = int16(-1)
-	ballMaxX      = display.Width - BallWidth
-	ballMaxY      = display.Height - BallHeight
+	// Ball positional variables.
+	ballX             int16
+	ballY             int16
+	ballXVelocity     int16
+	ballDown          = int16(1)
+	ballUp            = int16(-1)
+	ballYVelocity     = ballUp
+	ballLastYVelocity int16
+	ballMaxX          = display.Width - BallWidth
+	ballMaxY          = display.Height - BallHeight
+
+	// Paddle miss indicator and frame timer. The time package does not work
+	// well in tinygo, so instead we just wait for a number of frames.
+	miss       bool
+	missFrames int
 )
 
 // Init initialises the game state.
 func Init() {
 	display.Clear(Screen, Background)
+
+	resetBall(true, true)
 }
 
 // Update updates the current game state, intended to be called for each frame.
-func Update() {
+func Update(interrupt.Interrupt) {
 	clearPrevFrame()
+
+	// The last shot missed the paddle, reset the ball position and wait for
+	// the remaining frames before starting again.
+	if miss {
+		if missFrames > 0 {
+			missFrames--
+		} else {
+			miss = false
+			resetBall(true, true)
+		}
+	}
 
 	handleInput()
 
 	updatePaddle()
 
 	updateBall()
+}
+
+// resetBall resets the position and/or velocity of the ball to the default
+// values.
+func resetBall(position, velocity bool) {
+	if position {
+		ballX = (display.Width / 2) - (BallWidth / 2)
+		ballY = (display.Height / 2) - (BallHeight / 2)
+	}
+
+	if velocity {
+		ballXVelocity = int16(-2)
+
+		// Alternate ball direction on each new shot.
+		if ballLastYVelocity == ballDown {
+			ballYVelocity = ballUp
+			ballLastYVelocity = ballUp
+		} else {
+			ballYVelocity = ballDown
+			ballLastYVelocity = ballDown
+		}
+	}
 }
 
 // clearPrevFrame clears the previous frame drawn pixels.
@@ -137,13 +182,21 @@ func updateBall() {
 	)
 }
 
-// collideEdge detects if the ball has collided with the edge of the screen
-// and updates the direction accordingly.
+// collideEdge detects if the ball has collided with the edge of the screen.
 func collideEdge() {
 	if ballY == 0 || ballY == ballMaxY {
+		// Top or bottom of screen bounce.
 		ballYVelocity = -ballYVelocity
-	} else if ballX == 0 || ballX == ballMaxX {
+	} else if ballX == ballMaxX {
+		// Right hand side bounce.
 		ballXVelocity = -ballXVelocity
+	} else if ballX == 0 {
+		// Paddle missed, stop the ball and set the miss frame counter.
+		ballXVelocity = 0
+		ballYVelocity = 0
+		resetBall(true, false)
+		missFrames = 10
+		miss = true
 	}
 }
 
